@@ -1,1 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AAEA Quiz Bowl Flashcards</title>
 
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  >
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="kicker">Quiz Bowl Practice</p>
+      <h1>AAEA Flashcard Table</h1>
+    </div>
+
+    <div class="top-controls">
+      <div class="segmented" id="modeButtons" aria-label="Practice mode">
+        <button type="button" data-mode="study" class="active">Study</button>
+        <button type="button" data-mode="quiz">Quiz</button>
+      </div>
+
+      <label class="select-label">
+        Timer
+        <select id="timerSelect">
+          <option value="0">Off</option>
+          <option value="5">5s</option>
+          <option value="10">10s</option>
+          <option value="15">15s</option>
+          <option value="30">30s</option>
+        </select>
+      </label>
+
+      <button class="ghost-btn" id="resetSessionBtn" type="button">
+        Reset Session
+      </button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <section class="practice-panel">
+      <section class="filter-card">
+        <div>
+          <h2>Filters</h2>
+          <p>Only matching questions enter the randomized deck.</p>
+        </div>
+
+        <div class="filter-group">
+          <span>Year</span>
+          <div class="chips" id="yearChips"></div>
+        </div>
+
+        <div class="filter-group">
+          <span>Category</span>
+          <div class="chips" id="categoryChips"></div>
+        </div>
+      </section>
+
+      <div class="quiz-banner" id="quizBanner" hidden></div>
+
+      <section class="score-strip" aria-label="Session summary">
+        <div>
+          <strong id="deckCount">0</strong>
+          <span>Deck</span>
+        </div>
+        <div>
+          <strong id="askedCount">0</strong>
+          <span>History</span>
+        </div>
+        <div>
+          <strong id="accuracyText">0%</strong>
+          <span>Accuracy</span>
+        </div>
+        <div>
+          <strong id="scoreText">0 pts</strong>
+          <span>Score</span>
+        </div>
+      </section>
+
+      <div class="timer-wrap" id="timerWrap">
+        <div class="timer-track">
+          <span id="timerFill"></span>
+        </div>
+        <p id="timerText">Timer off</p>
+      </div>
+
+      <p class="deck-notice" id="deckNotice" aria-live="polite"></p>
+
+      <article class="flashcard" id="flashcard" tabindex="0" aria-live="polite">
+        <div class="card-inner" id="cardInner">
+          <section class="card-face card-front" id="cardFront"></section>
+          <section class="card-face card-back" id="cardBack"></section>
+        </div>
+      </article>
+
+      <section class="card-controls" aria-label="Flashcard controls">
+        <button class="primary-btn" id="showResponseBtn" type="button">
+          Show Response
+        </button>
+        <button class="success-btn" id="gotItBtn" type="button">
+          Got It
+        </button>
+        <button class="danger-btn" id="missedBtn" type="button">
+          Missed
+        </button>
+        <button class="primary-btn alt" id="nextBtn" type="button">
+          Next Question
+        </button>
+      </section>
+
+      <section class="utility-controls">
+        <button class="ghost-btn" id="shuffleBtn" type="button">
+          Shuffle Remaining
+        </button>
+        <button class="ghost-btn" id="reviewMissedBtn" type="button">
+          Review Missed Pile
+        </button>
+      </section>
+
+      <p class="keyboard-help">
+        Shortcuts: <kbd>Space</kbd>/<kbd>Enter</kbd> reveal,
+        <kbd>G</kbd> got it, <kbd>M</kbd> missed, <kbd>N</kbd> next.
+      </p>
+    </section>
+
+    <aside class="sidebar">
+      <nav class="tabs" id="tabButtons" aria-label="Sidebar tabs">
+        <button type="button" data-tab="history" class="active">History</button>
+        <button type="button" data-tab="missed">Missed</button>
+        <button type="button" data-tab="stats">Stats</button>
+      </nav>
+
+      <section class="tab-panel" data-tab-panel="history">
+        <h2>Question History</h2>
+        <div id="historyList"></div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="missed" hidden>
+        <h2>Missed Questions</h2>
+        <div id="missedList"></div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="stats" hidden>
+        <h2>Stats Dashboard</h2>
+        <div id="statsPanel"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
