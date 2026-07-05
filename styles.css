@@ -718,3 +718,8 @@ summary {
     flex: 1 1 100%;
   }
 }
+@media (max-width: 768px) {
+  .topbar {
+    display: none;
+  }
+}
