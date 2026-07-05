@@ -682,7 +682,7 @@ summary {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 650px) {
   .score-strip {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -716,9 +716,5 @@ summary {
   .card-controls > button,
   .utility-controls > button {
     flex: 1 1 100%;
-  }
-  .topbar {
-    position: static;
-    top: auto;
   }
 }
