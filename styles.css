@@ -62,7 +62,6 @@ button:disabled {
   border-bottom: 1px solid var(--line);
   background: rgba(7, 17, 31, 0.82);
   backdrop-filter: blur(18px);
-  position: static;
   top: 0;
   z-index: 10;
 }
@@ -716,10 +715,5 @@ summary {
   .card-controls > button,
   .utility-controls > button {
     flex: 1 1 100%;
-  }
-}
-@media (max-width: 768px) {
-  .topbar {
-    display: none;
   }
 }
