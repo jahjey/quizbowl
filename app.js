@@ -156,11 +156,11 @@
     });
 
     els.card.addEventListener("click", (event) => {
-      if (event.target.closest("button")) return;
-      revealCard();
-    });
+  if (event.target.closest("button")) return;
+  toggleCard();
+});
 
-    els.showResponseBtn.addEventListener("click", revealCard);
+    els.showResponseBtn.addEventListener("click", toggleCard);
     els.gotItBtn.addEventListener("click", () => markCurrent("correct"));
     els.missedBtn.addEventListener("click", () => markCurrent("missed"));
     els.nextBtn.addEventListener("click", drawNext);
@@ -214,7 +214,7 @@
 
       if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
-        revealCard();
+        toggleCard();
       }
 
       if (event.key.toLowerCase() === "g") markCurrent("correct");
@@ -398,14 +398,34 @@
     restartTimer();
   }
 
-  function revealCard() {
-    if (!current || flipped) return;
+function toggleCard() {
+  if (!current) return;
 
-    flipped = true;
-    stopTimer(false);
-    renderCard();
-    renderControls();
+  if (flipped) {
+    flipToQuestion();
+  } else {
+    flipToResponse();
   }
+}
+
+function flipToResponse() {
+  if (!current || flipped) return;
+
+  flipped = true;
+  stopTimer(false);
+  renderCard();
+  renderControls();
+  renderTimer();
+}
+
+function flipToQuestion() {
+  if (!current || !flipped) return;
+
+  flipped = false;
+  renderCard();
+  renderControls();
+  renderTimer();
+}
 
   function markCurrent(result) {
     if (!current || finalizedCurrent) return;
@@ -674,7 +694,8 @@
   function renderControls() {
     const hasCurrent = Boolean(current);
 
-    els.showResponseBtn.disabled = !hasCurrent || flipped;
+    els.showResponseBtn.disabled = !hasCurrent;
+    els.showResponseBtn.textContent = flipped ? "Show Question" : "Show Response";
     els.gotItBtn.disabled = !hasCurrent || finalizedCurrent;
     els.missedBtn.disabled = !hasCurrent || finalizedCurrent;
     els.nextBtn.disabled = !hasCurrent && queue.length === 0;
