@@ -56,17 +56,22 @@
 
   const els = {};
 
-  let state = {
-    filters: { year: "all", category: "all" },
-    mode: "study",
-    deckType: "standard",
-    timerSeconds: 0,
-    sessionUsedIds: [],
-    history: [],
-    missed: {},
-    stats: freshStats(),
-    quiz: null
-  };
+let state = {
+  filters: { year: "all", category: "all" },
+  mode: "study",
+  deckType: "standard",
+  timerSeconds: 0,
+  sessionUsedIds: [],
+  history: [],
+  missed: {},
+
+  // Remembers right/wrong status for every card.
+  // This lets each year/category section have its own review memory.
+  review: {},
+
+  stats: freshStats(),
+  quiz: null
+};
 
   let queue = [];
   let current = null;
@@ -90,7 +95,7 @@
   function cacheElements() {
     Object.assign(els, {
       yearChips: $("#yearChips"),
-      categoryChips: $("#categoryChips"),
+      categorySelect: $("#categorySelect"),
       modeButtons: $("#modeButtons"),
       timerSelect: $("#timerSelect"),
       resetSessionBtn: $("#resetSessionBtn"),
@@ -196,17 +201,22 @@
       loadSpecificQuestion(button.dataset.reviewId, "history");
     });
 
-    els.missedList.addEventListener("click", (event) => {
-      const reviewButton = event.target.closest("button[data-review-id]");
-      if (reviewButton) {
-        loadSpecificQuestion(reviewButton.dataset.reviewId, "missed");
-      }
+   els.missedList.addEventListener("click", (event) => {
+  const reviewButton = event.target.closest("button[data-review-id]");
+  if (reviewButton) {
+    loadSpecificQuestion(reviewButton.dataset.reviewId, "missed");
+  }
 
-      const dueButton = event.target.closest("button[data-review-due]");
-      if (dueButton) {
-        startMissedReview(true);
-      }
-    });
+  const dueButton = event.target.closest("button[data-review-due]");
+  if (dueButton) {
+    startMissedReview(true);
+  }
+
+  const allFilteredButton = event.target.closest("button[data-review-all-missed]");
+  if (allFilteredButton) {
+    startMissedReview(false);
+  }
+});
 
     document.addEventListener("keydown", (event) => {
       const tag = document.activeElement?.tagName?.toLowerCase();
@@ -223,36 +233,45 @@
     });
   }
 
-  function renderFilterChips() {
-    els.yearChips.innerHTML =
-      chipMarkup("year", "all", "All years") +
-      YEARS.map((year) => chipMarkup("year", year, year)).join("");
+function renderFilterChips() {
+  els.yearChips.innerHTML =
+    chipMarkup("year", "all", "All years") +
+    YEARS.map((year) => chipMarkup("year", year, year)).join("");
 
-    els.categoryChips.innerHTML =
-      chipMarkup("category", "all", "All categories") +
-      CATEGORIES.map((category) =>
-        chipMarkup("category", category, category)
-      ).join("");
+  els.categorySelect.innerHTML =
+    `<option value="all">All categories</option>` +
+    CATEGORIES.map(
+      (category) =>
+        `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`
+    ).join("");
 
-    [els.yearChips, els.categoryChips].forEach((group) => {
-      group.addEventListener("click", (event) => {
-        const button = event.target.closest("button[data-filter-kind]");
-        if (!button) return;
+  els.categorySelect.value = state.filters.category;
 
-        const kind = button.dataset.filterKind;
-        const value = button.dataset.filterValue;
+  els.yearChips.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-filter-kind]");
+    if (!button) return;
 
-        state.filters[kind] = value;
-        state.deckType = "standard";
-        state.quiz = null;
+    state.filters.year = button.dataset.filterValue;
+    state.deckType = "standard";
+    state.quiz = null;
 
-        rebuildDeck({ resetUsed: true });
-        drawNext();
-        saveState();
-        renderAll();
-      });
-    });
-  }
+    rebuildDeck({ resetUsed: true });
+    drawNext();
+    saveState();
+    renderAll();
+  });
+
+  els.categorySelect.addEventListener("change", () => {
+    state.filters.category = els.categorySelect.value;
+    state.deckType = "standard";
+    state.quiz = null;
+
+    rebuildDeck({ resetUsed: true });
+    drawNext();
+    saveState();
+    renderAll();
+  });
+}
 
   function chipMarkup(kind, value, label) {
     return `
@@ -314,17 +333,24 @@
     return shuffle(quizCards);
   }
 
-  function buildMissedQueue(onlyDue) {
-    const now = Date.now();
+ function buildMissedQueue(onlyDue) {
+  return shuffle(
+    filteredMissedEntries(onlyDue).map((entry) => entry.card)
+  );
+}
+  function filteredMissedEntries(onlyDue = false) {
+  const now = Date.now();
 
-    return shuffle(
-      Object.values(state.missed)
-        .filter((entry) => !onlyDue || entry.dueAt <= now)
-        .map((entry) => byId(entry.id))
-        .filter(Boolean)
-        .filter(matchesFilters)
-    );
-  }
+  return Object.values(state.missed)
+    .map((entry) => ({
+      ...entry,
+      card: byId(entry.id)
+    }))
+    .filter((entry) => entry.card)
+    .filter((entry) => matchesFilters(entry.card))
+    .filter((entry) => !onlyDue || entry.dueAt <= now)
+    .sort((a, b) => a.dueAt - b.dueAt);
+}
 
   function startMissedReview(onlyDue) {
     state.deckType = "missed";
@@ -459,8 +485,9 @@ function flipToQuestion() {
     state.history = state.history.slice(0, 200);
 
     if (result === "correct" || result === "missed") {
-      updateStats(result, current);
-    }
+  updateStats(result, current);
+  updateReviewMemory(result, current);
+}
 
     if (result === "missed") {
       scheduleMissed(current);
@@ -517,7 +544,35 @@ function flipToQuestion() {
       value.correct += 1;
     }
   }
+  
+function updateReviewMemory(result, item) {
+  const record = state.review[item.id] || {
+    id: item.id,
+    year: item.year,
+    category: item.category,
+    value: item.value,
+    correct: 0,
+    missed: 0,
+    attempts: 0,
+    lastResult: null,
+    lastAt: null
+  };
 
+  record.attempts += 1;
+  record.lastResult = result;
+  record.lastAt = Date.now();
+
+  if (result === "correct") {
+    record.correct += 1;
+  }
+
+  if (result === "missed") {
+    record.missed += 1;
+  }
+
+  state.review[item.id] = record;
+}
+  
   function scheduleMissed(item) {
     const existing = state.missed[item.id] || {
       id: item.id,
@@ -600,12 +655,17 @@ function flipToQuestion() {
   }
 
   function renderFilterStates() {
-    $$("[data-filter-kind='year']").forEach((button) => {
-      button.classList.toggle(
-        "active",
-        String(button.dataset.filterValue) === String(state.filters.year)
-      );
-    });
+  $$("[data-filter-kind='year']").forEach((button) => {
+    button.classList.toggle(
+      "active",
+      String(button.dataset.filterValue) === String(state.filters.year)
+    );
+  });
+
+  if (els.categorySelect) {
+    els.categorySelect.value = state.filters.category;
+  }
+}
 
     $$("[data-filter-kind='category']").forEach((button) => {
       button.classList.toggle(
@@ -700,7 +760,10 @@ function flipToQuestion() {
     els.missedBtn.disabled = !hasCurrent || finalizedCurrent;
     els.nextBtn.disabled = !hasCurrent && queue.length === 0;
     els.shuffleBtn.disabled = queue.length < 2;
-    els.reviewMissedBtn.disabled = Object.keys(state.missed).length === 0;
+    
+    const filteredMissedCount = filteredMissedEntries(false).length;
+els.reviewMissedBtn.disabled = filteredMissedCount === 0;
+els.reviewMissedBtn.textContent = `Review Filtered Missed (${filteredMissedCount})`;
 
     els.gotItBtn.textContent = finalizedCurrent ? "Recorded" : "Got It";
     els.nextBtn.textContent = current ? "Next Question" : "Load Question";
@@ -801,59 +864,199 @@ function flipToQuestion() {
       )
       .join("");
   }
+function reviewEntriesForCurrentFilters() {
+  return Object.values(state.review)
+    .map((entry) => ({
+      ...entry,
+      card: byId(entry.id)
+    }))
+    .filter((entry) => entry.card)
+    .filter((entry) => matchesFilters(entry.card));
+}
+
+function reviewSummaryForCurrentFilters() {
+  const entries = reviewEntriesForCurrentFilters();
+
+  return entries.reduce(
+    (summary, entry) => {
+      summary.attempted += 1;
+
+      if (entry.lastResult === "correct") {
+        summary.currentCorrect += 1;
+      }
+
+      if (entry.lastResult === "missed") {
+        summary.currentMissed += 1;
+      }
+
+      summary.totalCorrectAttempts += entry.correct || 0;
+      summary.totalMissedAttempts += entry.missed || 0;
+
+      return summary;
+    },
+    {
+      attempted: 0,
+      currentCorrect: 0,
+      currentMissed: 0,
+      totalCorrectAttempts: 0,
+      totalMissedAttempts: 0
+    }
+  );
+}
+
+function reviewEntriesForCurrentFilters() {
+  return Object.values(state.review)
+    .map((entry) => ({
+      ...entry,
+      card: byId(entry.id)
+    }))
+    .filter((entry) => entry.card)
+    .filter((entry) => matchesFilters(entry.card));
+}
+
+function reviewSummaryForCurrentFilters() {
+  const entries = reviewEntriesForCurrentFilters();
+
+  return entries.reduce(
+    (summary, entry) => {
+      summary.attempted += 1;
+
+      if (entry.lastResult === "correct") {
+        summary.currentCorrect += 1;
+      }
+
+      if (entry.lastResult === "missed") {
+        summary.currentMissed += 1;
+      }
+
+      summary.totalCorrectAttempts += entry.correct || 0;
+      summary.totalMissedAttempts += entry.missed || 0;
+
+      return summary;
+    },
+    {
+      attempted: 0,
+      currentCorrect: 0,
+      currentMissed: 0,
+      totalCorrectAttempts: 0,
+      totalMissedAttempts: 0
+    }
+  );
+}
+
+function currentScopeLabel() {
+  const yearLabel =
+    state.filters.year === "all" ? "All years" : String(state.filters.year);
+
+  const categoryLabel =
+    state.filters.category === "all"
+      ? "All categories"
+      : state.filters.category;
+
+  return `${yearLabel} · ${categoryLabel}`;
+}
 
   function renderMissed() {
-    const missed = Object.values(state.missed)
-      .map((entry) => ({ ...entry, card: byId(entry.id) }))
-      .filter((entry) => entry.card)
-      .sort((a, b) => a.dueAt - b.dueAt);
+  const missed = filteredMissedEntries(false);
+  const due = filteredMissedEntries(true);
+  const scope = currentScopeLabel();
+  const reviewSummary = reviewSummaryForCurrentFilters();
 
-    const dueCount = missed.filter((entry) => entry.dueAt <= Date.now()).length;
-
-    if (!missed.length) {
-      els.missedList.innerHTML = `
-        <p class="muted">
-          Missed questions will collect here. Getting one right during missed
-          review removes it from the pile.
-        </p>
-      `;
-      return;
-    }
-
+  if (!missed.length) {
     els.missedList.innerHTML = `
-      <div class="missed-actions">
-        <button class="mini-btn" type="button" data-review-due="true">
-          Review due now (${dueCount})
-        </button>
+      <div class="review-scope">
+        <strong>${escapeHtml(scope)}</strong>
+        <p>No missed questions currently match this filter.</p>
+
+        <div class="review-summary-grid">
+          <div>
+            <strong>${reviewSummary.attempted}</strong>
+            <span>Attempted</span>
+          </div>
+          <div>
+            <strong>${reviewSummary.currentCorrect}</strong>
+            <span>Currently right</span>
+          </div>
+          <div>
+            <strong>${reviewSummary.currentMissed}</strong>
+            <span>Currently wrong</span>
+          </div>
+        </div>
       </div>
 
-      ${missed
-        .map(
-          (entry) => `
-            <article class="side-card">
-              <div class="side-card-head">
-                <span class="result missed">Missed x${entry.misses}</span>
-                <span>${entry.card.category} · ${entry.card.year} · ${entry.card.value} pts</span>
-              </div>
-
-              <p>${escapeHtml(entry.card.question)}</p>
-              <p class="muted">Due ${formatDue(entry.dueAt)}</p>
-
-              <button class="mini-btn" type="button" data-review-id="${escapeHtml(entry.id)}">
-                Review now
-              </button>
-            </article>
-          `
-        )
-        .join("")}
+      <p class="muted">
+        Change the year or category filter to view another section's missed pile.
+      </p>
     `;
+    return;
   }
+
+  els.missedList.innerHTML = `
+    <div class="review-scope">
+      <strong>${escapeHtml(scope)}</strong>
+      <p>
+        This missed pile is filtered by your selected year/category.
+      </p>
+
+      <div class="review-summary-grid">
+        <div>
+          <strong>${reviewSummary.attempted}</strong>
+          <span>Attempted</span>
+        </div>
+        <div>
+          <strong>${reviewSummary.currentCorrect}</strong>
+          <span>Currently right</span>
+        </div>
+        <div>
+          <strong>${reviewSummary.currentMissed}</strong>
+          <span>Currently wrong</span>
+        </div>
+      </div>
+
+      <div class="missed-actions">
+        <button class="mini-btn" type="button" data-review-due="true">
+          Review due now (${due.length})
+        </button>
+
+        <button class="mini-btn" type="button" data-review-all-missed="true">
+          Review all filtered missed (${missed.length})
+        </button>
+      </div>
+    </div>
+
+    ${missed
+      .map(
+        (entry) => `
+          <article class="side-card">
+            <div class="side-card-head">
+              <span class="result missed">Missed x${entry.misses}</span>
+              <span>${entry.card.category} · ${entry.card.year} · ${entry.card.value} pts</span>
+            </div>
+
+            <p>${escapeHtml(entry.card.question)}</p>
+            <p class="muted">Due ${formatDue(entry.dueAt)}</p>
+
+            <details>
+              <summary>Answer</summary>
+              <p>${escapeHtml(entry.card.answer)}</p>
+            </details>
+
+            <button class="mini-btn" type="button" data-review-id="${escapeHtml(entry.id)}">
+              Review this question
+            </button>
+          </article>
+        `
+      )
+      .join("")}
+  `;
+}
 
   function renderStats() {
     const accuracy = state.stats.attempted
       ? Math.round((state.stats.correct / state.stats.attempted) * 100)
       : 0;
-
+    const reviewSummary = reviewSummaryForCurrentFilters();
+    const scope = currentScopeLabel();
     const categoryRows = CATEGORIES.map((category) =>
       statRow(category, state.stats.byCategory[category])
     ).join("");
@@ -868,7 +1071,7 @@ function flipToQuestion() {
           <strong>${state.stats.attempted}</strong>
           <span>Attempts</span>
         </div>
-
+        
         <div class="stat-box">
           <strong>${state.stats.correct}</strong>
           <span>Correct</span>
@@ -884,7 +1087,31 @@ function flipToQuestion() {
           <span>Accuracy</span>
         </div>
       </div>
+      <h3>Current filtered review pile</h3>
 
+      <div class="review-scope">
+        <strong>${escapeHtml(scope)}</strong>
+        <p>
+          This remembers which questions are currently right or wrong for the
+          selected year/category section.
+        </p>
+
+        <div class="review-summary-grid">
+          <div>
+            <strong>${reviewSummary.attempted}</strong>
+            <span>Attempted</span>
+          </div>
+          <div>
+            <strong>${reviewSummary.currentCorrect}</strong>
+            <span>Currently right</span>
+          </div>
+          <div>
+            <strong>${reviewSummary.currentMissed}</strong>
+            <span>Currently wrong</span>
+          </div>
+        </div>
+      </div>
+      
       <h3>By category</h3>
       <div class="stats-list">${categoryRows}</div>
 
@@ -900,6 +1127,7 @@ function flipToQuestion() {
       state.stats = freshStats();
       state.history = [];
       state.missed = {};
+      state.review = {};
       saveState();
       renderAll();
     });
@@ -937,7 +1165,10 @@ function flipToQuestion() {
         : [],
       history: Array.isArray(saved.history) ? saved.history : [],
       missed:
-        saved.missed && typeof saved.missed === "object" ? saved.missed : {}
+  saved.missed && typeof saved.missed === "object" ? saved.missed : {},
+
+review:
+  saved.review && typeof saved.review === "object" ? saved.review : {}
     };
   }
 
